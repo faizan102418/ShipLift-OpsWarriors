@@ -1,0 +1,4 @@
+*.Zone.Keeper
+.DS_Store
+node_modules
+*.class
