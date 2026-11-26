@@ -33,7 +33,7 @@ fi
 PURGE=false
 
 if [[ "$#" -eq 1 ]]; then
-	if [[ "$#" == "--purge" ]]; then
+	if [[ "$1"  == "--purge" ]]; then
 		PURGE=true
 	else
 		echo "ERROR: Unknown option: $1"
