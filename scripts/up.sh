@@ -1,6 +1,7 @@
 
 #!/usr/bin/env bash
 set -Eeuo pipefail
+cd "$(dirname "$0")/.."
 
 # ShopLite startup automation
 # Usage: TAG=1.0.0 ./scripts/up.sh
