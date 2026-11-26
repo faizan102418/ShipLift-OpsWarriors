@@ -1,0 +1,41 @@
+# Reject unknown Host headers and direct IP access
+server {
+    listen 8080 default_server;
+    server_name _;
+    return 444;
+}
+
+# ShopLite application
+server {
+    listen 8080;
+    server_name ${SERVER_NAME};
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Catalog API
+    location /api/catalog/ {
+        proxy_pass http://catalog:3000/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # Inventory API
+    location /api/inventory/ {
+        proxy_pass http://inventory:8081/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # Orders API
+    location /api/orders/ {
+        proxy_pass http://orders:8082/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # React frontend routing
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
