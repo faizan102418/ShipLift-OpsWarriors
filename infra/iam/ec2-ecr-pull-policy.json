@@ -1,0 +1,26 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowECRAuthentication",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowShopLiteImagePull",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage"
+      ],
+      "Resource": [
+        "arn:aws:ecr:ap-southeast-2:782086108297:repository/shoplite/frontend",
+        "arn:aws:ecr:ap-southeast-2:782086108297:repository/shoplite/catalog",
+        "arn:aws:ecr:ap-southeast-2:782086108297:repository/shoplite/inventory",
+        "arn:aws:ecr:ap-southeast-2:782086108297:repository/shoplite/orders"
+      ]
+    }
+  ]
+}
