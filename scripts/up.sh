@@ -19,6 +19,11 @@ if [[ ! -f .env ]]; then
     exit 1
 fi
 
+if [[ ! -f db/init.sql ]]; then
+    echo "ERROR: db/init.sql not found."
+    exit 1
+fi
+
 # Check required images
 for service in frontend catalog inventory orders; do
     if ! docker image inspect "shop-${service}:${TAG}" >/dev/null 2>&1; then
