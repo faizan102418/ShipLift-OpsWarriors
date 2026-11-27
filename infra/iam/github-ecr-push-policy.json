@@ -18,7 +18,8 @@
         "ecr:PutImage",
         "ecr:BatchGetImage",
         "ecr:GetDownloadUrlForLayer",
-        "ecr:DescribeImages"
+        "ecr:DescribeImages",
+        "ecr:DescribeImageScanFindings"
       ],
       "Resource": [
         "arn:aws:ecr:ap-southeast-2:782086108297:repository/shoplite/frontend",

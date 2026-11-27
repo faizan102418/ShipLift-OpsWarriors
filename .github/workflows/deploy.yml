@@ -99,6 +99,66 @@ jobs:
 
           echo "Published release: $IMAGE"
 
+      - name: Verify ECR vulnerability findings
+        if: matrix.service != 'inventory'
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          set -euo pipefail
+
+          TAG="${GITHUB_SHA:0:7}"
+          REPO="shoplite/$SERVICE"
+
+          MANIFEST=$(aws ecr batch-get-image             --repository-name "$REPO"             --image-ids "imageTag=$TAG"             --query 'images[0].imageManifest'             --output text)
+
+          DIGEST=$(echo "$MANIFEST" | jq -r '
+            .manifests[]? |
+            select(.platform.os == "linux" and
+                   .platform.architecture == "amd64") |
+            .digest
+          ')
+
+          if [[ -z "$DIGEST" ]]; then
+            DIGEST=$(aws ecr describe-images               --repository-name "$REPO"               --image-ids "imageTag=$TAG"               --query 'imageDetails[0].imageDigest'               --output text)
+          fi
+
+          echo "Checking $REPO at $DIGEST"
+
+          for attempt in $(seq 1 60); do
+            if RESULT=$(aws ecr describe-image-scan-findings               --repository-name "$REPO"               --image-id "imageDigest=$DIGEST"               --output json); then
+
+              STATUS=$(echo "$RESULT" |
+                jq -r '.imageScanStatus.status')
+
+              case "$STATUS" in
+                COMPLETE)
+                  CRITICAL=$(echo "$RESULT" |
+                    jq -r '.imageScanFindings.findingSeverityCounts.CRITICAL // 0')
+
+                  echo "Critical vulnerabilities: $CRITICAL"
+                  test "$CRITICAL" -eq 0
+                  exit 0
+                  ;;
+                IN_PROGRESS|PENDING)
+                  ;;
+                *)
+                  echo "Unexpected scan status: $STATUS"
+                  exit 1
+                  ;;
+              esac
+            fi
+
+            sleep 10
+          done
+
+          echo "Vulnerability scan timed out"
+          exit 1
+
+      - name: Document Inventory scanning limitation
+        if: matrix.service == 'inventory'
+        run: |
+          echo "::warning::ECR Basic Scanning does not support the scratch-based Inventory image. Separate Go vulnerability scanning is required."
+
   deploy:
     name: Deploy to production
     needs: build
@@ -107,6 +167,9 @@ jobs:
     environment: production
 
     steps:
+      - name: Checkout deployment files
+        uses: actions/checkout@v4
+
       - name: Configure restricted SSH access
         env:
           VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
@@ -129,7 +192,12 @@ jobs:
 
           TAG="${GITHUB_SHA:0:7}"
 
-          ssh \
+          {
+            base64 -w 0 scripts/deploy.sh
+            printf '\n'
+            base64 -w 0 db/init.sql
+            printf '\n'
+          } | ssh \
             -i ~/.ssh/shoplite \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
