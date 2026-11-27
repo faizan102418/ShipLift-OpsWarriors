@@ -10,7 +10,7 @@
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:faizan102418/ShipLift-OpsWarriors:ref:refs/heads/main"
+          "token.actions.githubusercontent.com:sub": "repo:faizan102418@129638545/ShipLift-OpsWarriors@1469735934:ref:refs/heads/main"
         }
       }
     }
