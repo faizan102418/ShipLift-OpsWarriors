@@ -45,9 +45,11 @@ valid_sha() {
 
 [[ "$EUID" -eq 0 ]] || fail "Run this script as root"
 
-[[ "$#" -eq 1 ]] || fail "Usage: $0 <release-sha>"
+[[ "$#" -le 1 ]] || fail "Usage: $0 <release-sha>"
 
-RELEASE_SHA="$1"
+RELEASE_SHA="${1:-${IMAGE_TAG:-}}"
+
+[[ -n "$RELEASE_SHA" ]] || fail "IMAGE_TAG or release SHA is required"
 
 valid_sha "$RELEASE_SHA" || fail "Invalid release SHA"
 
@@ -303,7 +305,7 @@ start_frontend() {
         --network frontend-net \
         --restart unless-stopped \
         --env-file "$APP_DIR/frontend.env" \
-        -p 127.0.0.1:80:8080 \
+        -p 0.0.0.0:80:8080 \
         "$ECR_REGISTRY/shoplite/frontend:$sha" \
         >/dev/null || return 1
 }
@@ -352,6 +354,15 @@ deploy_release() {
     wait_healthy orders || return 1
 
     start_frontend "$sha" || return 1
+    timeout 60 bash -c '
+        until [[ "$(curl -s --connect-timeout 2 --max-time 3 \
+            -o /dev/null -w "%{http_code}" \
+            -H "Host: $1" \
+            http://127.0.0.1/api/catalog/health)" == "200" ]]; do
+            sleep 2
+        done
+    ' _ "$APP_DOMAIN" || return 1
+
     wait_healthy frontend || return 1
 
     smoke_test || return 1
@@ -422,4 +433,45 @@ else
 fi
 
 log "PostgreSQL and persistent storage preserved"
+
+# Remove old ShopLite images while protecting rollback releases.
+prune_old_images() {
+    local current previous cutoff service ref tag created epoch
+
+    current=$(cat "$CURRENT_FILE")
+    previous=$(cat "$PREVIOUS_FILE" 2>/dev/null || true)
+    cutoff=$(date -d '7 days ago' +%s)
+
+    for service in "${SERVICES[@]}"; do
+        while IFS= read -r ref; do
+            tag="${ref##*:}"
+
+            valid_sha "$tag" || continue
+
+            if [[ "$tag" == "$current" ||
+                  "$tag" == "$previous" ]]; then
+                continue
+            fi
+
+            created=$(docker image inspect \
+                --format '{{.Created}}' "$ref") || continue
+
+            epoch=$(date -d "$created" +%s) || continue
+
+            if (( epoch < cutoff )); then
+                log "Removing old image: $ref"
+                docker image rm "$ref" ||
+                    log "Image retained: $ref"
+            fi
+
+        done < <(
+            docker image ls \
+                "$ECR_REGISTRY/shoplite/$service" \
+                --format '{{.Repository}}:{{.Tag}}'
+        )
+    done
+}
+
+prune_old_images || log "Image cleanup incomplete"
+
 log "Deployment finished"
