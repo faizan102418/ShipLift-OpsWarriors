@@ -7,10 +7,9 @@ COPY pom.xml ./
 RUN mvn -B dependency:go-offline
 
 COPY src/ ./src/
-RUN mvn -B -DskipTests package
-
-# Create a custom runtime containing only required Java modules
-RUN jlink \
+# Build application and generate the custom Java runtime
+RUN mvn -B -DskipTests package \
+    && jlink \
     --add-modules java.base,java.logging,java.management,java.naming,java.net.http,java.security.jgss,java.sql,java.xml,java.instrument,jdk.crypto.ec,jdk.unsupported,java.desktop,java.rmi,java.prefs \
     --strip-debug \
     --no-man-pages \
@@ -25,7 +24,7 @@ FROM alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0
 WORKDIR /app
 
 RUN apk upgrade --no-cache \
-    && apk add --no-cache libstdc++ ca-certificates \
+    && apk add --no-cache libstdc++=15.2.0-r5 ca-certificates=20261020-r0 \
     && addgroup -S -g 10001 app \
     && adduser -S -u 10001 -G app app
 

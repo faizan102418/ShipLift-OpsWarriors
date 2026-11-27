@@ -14,7 +14,7 @@ RUN npm run build
 FROM alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 
 RUN apk upgrade --no-cache \
-    && apk add --no-cache nginx gettext-envsubst \
+    && apk add --no-cache nginx=1.30.8-r0 gettext-envsubst=1.0-r0 \
     && mkdir -p /run/nginx /var/lib/nginx/tmp \
        /etc/nginx/templates /tmp/client_temp /tmp/proxy_temp \
        /tmp/fastcgi_temp /tmp/uwsgi_temp /tmp/scgi_temp \
