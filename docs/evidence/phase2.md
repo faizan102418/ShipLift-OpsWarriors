@@ -116,3 +116,22 @@ This evidence records the demonstrated deployment and acceptance
 checks. It does not claim full production hardening or verification
 of every possible failure scenario.
 
+
+## HTTPS Extension
+
+Implemented on 27 November 2026.
+
+| Test | Result |
+|---|---|
+| HTTPS frontend | HTTP 200 |
+| HTTPS catalog health | HTTP 200 |
+| HTTPS inventory health | HTTP 200 |
+| HTTPS orders health | HTTP 200 |
+| HTTP-to-HTTPS redirection | HTTP 301 |
+| Public certificate validation by curl | PASS |
+
+The production architecture now uses host-level Nginx for
+TLS termination and Certbot for certificate management.
+The Docker frontend is configured to bind to localhost port 8080.
+
+These HTTPS checks supplement the earlier HTTP deployment evidence.

@@ -305,7 +305,7 @@ start_frontend() {
         --network frontend-net \
         --restart unless-stopped \
         --env-file "$APP_DIR/frontend.env" \
-        -p 0.0.0.0:80:8080 \
+        -p 127.0.0.1:8080:8080 \
         "$ECR_REGISTRY/shoplite/frontend:$sha" \
         >/dev/null || return 1
 }
@@ -328,7 +328,7 @@ smoke_test() {
             --connect-timeout 5 \
             --max-time 15 \
             -H "Host: $APP_DOMAIN" \
-            "http://127.0.0.1$path" \
+            "http://127.0.0.1:8080$path" \
             >/dev/null || return 1
     done
 
@@ -359,7 +359,7 @@ deploy_release() {
         until [[ "$(curl -s --connect-timeout 2 --max-time 3 \
             -o /dev/null -w "%{http_code}" \
             -H "Host: $1" \
-            http://127.0.0.1/api/catalog/health)" == "200" ]]; do
+            http://127.0.0.1:8080/api/catalog/health)" == "200" ]]; do
             sleep 2
         done
     ' _ "$APP_DOMAIN" || return 1

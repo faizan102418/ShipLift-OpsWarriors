@@ -216,7 +216,7 @@ jobs:
               --max-time 5 \
               -o /dev/null \
               -w "%{http_code}" \
-              "http://$APP_DOMAIN/api/catalog/health")" == "200" ]]; do
+              "https://$APP_DOMAIN/api/catalog/health")" == "200" ]]; do
               sleep 3
             done
           '

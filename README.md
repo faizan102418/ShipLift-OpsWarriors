@@ -63,7 +63,7 @@ This project's code has been provided by [@haroonkhan9426](https://github.com/ha
 
 ### Live Application
 
-http://shoplite-opswarriors.duckdns.org
+https://shoplite-opswarriors.duckdns.org
 
 ### Architecture
 
@@ -113,6 +113,16 @@ Deploy a previously published release:
 The deployment script also attempts automatic rollback if a new
 release fails its deployment checks.
 
+### HTTPS Configuration
+
+- Host Nginx terminates TLS on port 443.
+- Let's Encrypt provides the TLS certificate.
+- Certbot manages certificate renewal.
+- HTTP redirects to HTTPS.
+- Docker frontend binds to 127.0.0.1:8080.
+- Public CI/CD smoke tests use HTTPS.
+- Certificates remain independent of application containers.
+
 ### Security Controls
 
 - Private ECR repositories with immutable tags.
@@ -141,7 +151,7 @@ of their SHA256 checksums on the production server.
 - SSH port 22 is public for GitHub-hosted runners.
 - Inventory uses a scratch image unsupported by ECR Basic Scanning.
   Separate Go vulnerability scanning remains outstanding.
-- HTTPS and application-level authentication remain future work.
+- Application-level authentication remains future work.
 - Health endpoints provide basic liveness checks.
 - A database backup exists, but full restoration is untested.
 - GitHub Actions reports Node.js runtime deprecation warnings.
@@ -149,4 +159,3 @@ of their SHA256 checksums on the production server.
 ### Deployment Evidence
 
 See [Phase 2 Acceptance Evidence](docs/evidence/phase2.md).
-
