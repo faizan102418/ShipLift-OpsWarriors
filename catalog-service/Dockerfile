@@ -21,7 +21,8 @@ WORKDIR /app
 
 # Install the C++ runtime required by Node.js
 # libgcc is installed as a dependency where required
-RUN apk add --no-cache libstdc++ \
+RUN apk upgrade --no-cache \
+    && apk add --no-cache libstdc++ \
     && addgroup -S node \
     && adduser -S -G node node
 

@@ -24,7 +24,8 @@ FROM alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0
 
 WORKDIR /app
 
-RUN apk add --no-cache libstdc++ ca-certificates \
+RUN apk upgrade --no-cache \
+    && apk add --no-cache libstdc++ ca-certificates \
     && addgroup -S -g 10001 app \
     && adduser -S -u 10001 -G app app
 
