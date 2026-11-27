@@ -354,6 +354,7 @@ deploy_release() {
     wait_healthy orders || return 1
 
     start_frontend "$sha" || return 1
+    # shellcheck disable=SC2016
     timeout 60 bash -c '
         until [[ "$(curl -s --connect-timeout 2 --max-time 3 \
             -o /dev/null -w "%{http_code}" \
