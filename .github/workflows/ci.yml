@@ -1,0 +1,87 @@
+name: ShopLite CI
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate ${{ matrix.service }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: frontend
+            context: frontend
+            max_mb: 60
+
+          - service: catalog
+            context: catalog-service
+            max_mb: 200
+
+          - service: inventory
+            context: inventory-service
+            max_mb: 30
+
+          - service: orders
+            context: order-service
+            max_mb: 300
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ${{ matrix.context }}/Dockerfile
+          failure-threshold: warning
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            -t shop-${{ matrix.service }}:ci \
+            "${{ matrix.context }}"
+
+      - name: Validate image size
+        env:
+          SERVICE: ${{ matrix.service }}
+          MAX_MB: ${{ matrix.max_mb }}
+        run: |
+          set -euo pipefail
+
+          SIZE=$(docker image inspect \
+            "shop-${SERVICE}:ci" \
+            --format '{{.Size}}')
+
+          LIMIT=$((MAX_MB * 1000000))
+
+          echo "Image size: $SIZE bytes"
+          echo "Maximum size: $LIMIT bytes"
+
+          if (( SIZE > LIMIT )); then
+            echo "::error::Image exceeds size budget"
+            exit 1
+          fi
+
+          echo "Image size validation passed"
+
+  validate-scripts:
+    name: Validate shell scripts
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Bash syntax and ShellCheck
+        run: |
+          for script in scripts/*.sh; do
+            bash -n "$script"
+            shellcheck "$script"
+          done

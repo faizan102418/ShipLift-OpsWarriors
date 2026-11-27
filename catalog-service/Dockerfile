@@ -10,6 +10,13 @@ COPY package*.json ./
 # Install only production dependencies using the lockfile
 RUN npm ci --omit=dev
 
+# Remove unnecessary symbols before copying Node.js
+# into the production runtime.
+# hadolint ignore=DL3018
+RUN apk add --no-cache binutils \
+    && strip --strip-unneeded /usr/local/bin/node \
+    && node --version
+
 # Copy application source
 COPY src/ ./src/
 
@@ -21,7 +28,8 @@ WORKDIR /app
 
 # Install the C++ runtime required by Node.js
 # libgcc is installed as a dependency where required
-RUN apk add --no-cache libstdc++ \
+RUN apk upgrade --no-cache \
+    && apk add --no-cache libstdc++=15.2.0-r5 \
     && addgroup -S node \
     && adduser -S -G node node
 

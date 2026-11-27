@@ -1,0 +1,228 @@
+name: ShopLite Production Deployment
+
+on:
+  push:
+    branches: [main]
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shoplite-production
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-2
+
+jobs:
+  build:
+    name: Publish ${{ matrix.service }}
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: frontend
+            context: frontend
+
+          - service: catalog
+            context: catalog-service
+
+          - service: inventory
+            context: inventory-service
+
+          - service: orders
+            context: order-service
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure temporary AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and publish immutable image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          SERVICE: ${{ matrix.service }}
+          CONTEXT: ${{ matrix.context }}
+        run: |
+          set -euo pipefail
+
+          TAG="${GITHUB_SHA:0:7}"
+          IMAGE="$REGISTRY/shoplite/$SERVICE:$TAG"
+
+          ERROR_FILE=$(mktemp)
+          trap 'rm -f "$ERROR_FILE"' EXIT
+
+          if aws ecr describe-images \
+            --repository-name "shoplite/$SERVICE" \
+            --image-ids "imageTag=$TAG" \
+            >/dev/null 2>"$ERROR_FILE"; then
+
+            docker pull "$IMAGE"
+
+            REVISION=$(docker image inspect "$IMAGE" \
+              --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
+
+            test "$REVISION" = "$GITHUB_SHA"
+
+            echo "Verified existing immutable image"
+          else
+            if ! grep -q ImageNotFoundException "$ERROR_FILE"; then
+              cat "$ERROR_FILE" >&2
+              exit 1
+            fi
+
+            docker buildx build \
+              --platform linux/amd64 \
+              --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+              --tag "$IMAGE" \
+              --push \
+              "$CONTEXT"
+          fi
+
+          echo "Published release: $IMAGE"
+
+      - name: Verify ECR vulnerability findings
+        if: matrix.service != 'inventory'
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          set -euo pipefail
+
+          TAG="${GITHUB_SHA:0:7}"
+          REPO="shoplite/$SERVICE"
+
+          MANIFEST=$(aws ecr batch-get-image             --repository-name "$REPO"             --image-ids "imageTag=$TAG"             --query 'images[0].imageManifest'             --output text)
+
+          DIGEST=$(echo "$MANIFEST" | jq -r '
+            .manifests[]? |
+            select(.platform.os == "linux" and
+                   .platform.architecture == "amd64") |
+            .digest
+          ')
+
+          if [[ -z "$DIGEST" ]]; then
+            DIGEST=$(aws ecr describe-images               --repository-name "$REPO"               --image-ids "imageTag=$TAG"               --query 'imageDetails[0].imageDigest'               --output text)
+          fi
+
+          echo "Checking $REPO at $DIGEST"
+
+          for attempt in $(seq 1 60); do
+            if RESULT=$(aws ecr describe-image-scan-findings               --repository-name "$REPO"               --image-id "imageDigest=$DIGEST"               --output json); then
+
+              STATUS=$(echo "$RESULT" |
+                jq -r '.imageScanStatus.status')
+
+              case "$STATUS" in
+                COMPLETE)
+                  CRITICAL=$(echo "$RESULT" |
+                    jq -r '.imageScanFindings.findingSeverityCounts.CRITICAL // 0')
+
+                  echo "Critical vulnerabilities: $CRITICAL"
+                  test "$CRITICAL" -eq 0
+                  exit 0
+                  ;;
+                IN_PROGRESS|PENDING)
+                  ;;
+                *)
+                  echo "Unexpected scan status: $STATUS"
+                  exit 1
+                  ;;
+              esac
+            fi
+
+            sleep 10
+          done
+
+          echo "Vulnerability scan timed out"
+          exit 1
+
+      - name: Document Inventory scanning limitation
+        if: matrix.service == 'inventory'
+        run: |
+          echo "::warning::ECR Basic Scanning does not support the scratch-based Inventory image. Separate Go vulnerability scanning is required."
+
+  deploy:
+    name: Deploy to production
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout deployment files
+        uses: actions/checkout@v4
+
+      - name: Configure restricted SSH access
+        env:
+          VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+          VM_KNOWN_HOSTS: ${{ secrets.VM_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+
+          install -d -m 700 ~/.ssh
+          umask 077
+
+          printf '%s\n' "$VM_SSH_KEY" > ~/.ssh/shoplite
+          printf '%s\n' "$VM_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploy exact commit release
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+          VM_USER: ${{ secrets.VM_USER }}
+        run: |
+          set -euo pipefail
+
+          TAG="${GITHUB_SHA:0:7}"
+
+          {
+            base64 -w 0 scripts/deploy.sh
+            printf '\n'
+            base64 -w 0 db/init.sql
+            printf '\n'
+          } | ssh \
+            -i ~/.ssh/shoplite \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            "$VM_USER@$VM_HOST" \
+            "deploy $TAG"
+
+      - name: Public smoke test
+        env:
+          APP_DOMAIN: ${{ vars.APP_DOMAIN }}
+        run: |
+          timeout 60 bash -c '
+            until [[ "$(curl -s \
+              --connect-timeout 3 \
+              --max-time 5 \
+              -o /dev/null \
+              -w "%{http_code}" \
+              "http://$APP_DOMAIN/api/catalog/health")" == "200" ]]; do
+              sleep 3
+            done
+          '
+
+          echo "Public deployment verified"
+
+      - name: Remove temporary SSH credentials
+        if: always()
+        run: rm -f ~/.ssh/shoplite
